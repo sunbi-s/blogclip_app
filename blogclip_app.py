@@ -422,66 +422,73 @@ def main():
     ):
         # 처리가 완료되지 않았거나 새로운 처리 요청이 있을 경우에만 실행
         if not st.session_state.processing_done or process_button:
+
             # 진행 상황 표시 컨테이너
             progress_container = st.container()
-            with progress_container:
-                text = extract_text_from_pdf(uploaded_files)
-                if not text:
-                    st.error("PDF에서 텍스트를 추출할 수 없습니다.")
-                    return
 
-                # 선택된 모델로 스크립트 생성
-                selected_model = st.session_state.selected_model
-                total_script_length = script_length * num_pages
-                raw_script = generate_video_script(
-                    text, num_pages, total_script_length, selected_model
+            text = ""  # 전체 텍스트를 저장할 변수
+            # 업로드된 파일 순서대로 text 합쳐지게
+            for uploaded_file in reversed(uploaded_files):
+                with progress_container:
+                    sub_text = extract_text_from_pdf(uploaded_file)
+                    text += "\n" + sub_text  # 텍스트를 누적해서 이어붙이기
+                    if not sub_text:
+                        st.error("PDF에서 텍스트를 추출할 수 없습니다.")
+                        return
+
+            print(text)
+            # 선택된 모델로 스크립트 생성
+            selected_model = st.session_state.selected_model
+            total_script_length = script_length * num_pages
+            raw_script = generate_video_script(
+                text, num_pages, total_script_length, selected_model
+            )
+            if not raw_script or "실패" in raw_script:
+                st.error("블로그 스크립트 생성에 실패했습니다.")
+                return
+
+            # 세션에 원본 스크립트 저장
+            st.session_state.raw_script = raw_script
+
+            # 스크립트를 페이지별로 파싱 (예상 페이지 수 전달)
+            pages = parse_script_pages(raw_script, num_pages)
+
+            # 각 페이지에 대한 이미지 프롬프트 생성
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+
+            for i, page in enumerate(pages):
+                status_text.text(f"페이지 {i+1}/{len(pages)} 처리 중...")
+                progress_bar.progress(
+                    (i) / len(pages) / 2
+                )  # 전체 진행의 절반은 프롬프트 생성
+
+                # 이미지 프롬프트 생성
+                page["image_prompt"] = generate_image_prompt_for_page(
+                    page, selected_model
                 )
-                if not raw_script or "실패" in raw_script:
-                    st.error("블로그 스크립트 생성에 실패했습니다.")
-                    return
 
-                # 세션에 원본 스크립트 저장
-                st.session_state.raw_script = raw_script
+                # 이미지 생성
+                progress_bar.progress(
+                    0.5 + (i) / len(pages) / 2
+                )  # 후반부는 이미지 생성
+                image_result = generate_image_for_page(page, image_style)
+                page["image_url"] = image_result["url"]
 
-                # 스크립트를 페이지별로 파싱 (예상 페이지 수 전달)
-                pages = parse_script_pages(raw_script, num_pages)
-
-                # 각 페이지에 대한 이미지 프롬프트 생성
-                progress_bar = st.progress(0)
-                status_text = st.empty()
-
-                for i, page in enumerate(pages):
-                    status_text.text(f"페이지 {i+1}/{len(pages)} 처리 중...")
-                    progress_bar.progress(
-                        (i) / len(pages) / 2
-                    )  # 전체 진행의 절반은 프롬프트 생성
-
-                    # 이미지 프롬프트 생성
-                    page["image_prompt"] = generate_image_prompt_for_page(
-                        page, selected_model
-                    )
-
-                    # 이미지 생성
-                    progress_bar.progress(
-                        0.5 + (i) / len(pages) / 2
-                    )  # 후반부는 이미지 생성
-                    image_result = generate_image_for_page(page, image_style)
-                    page["image_url"] = image_result["url"]
-
-                    # 이미지 생성 사이 간격
-                    time.sleep(0.5)
-
-                progress_bar.progress(1.0)
-                status_text.text("페이지 생성 완료!")
+                # 이미지 생성 사이 간격
                 time.sleep(0.5)
-                status_text.empty()
-                progress_bar.empty()
 
-                # 세션에 페이지 저장
-                st.session_state.pages = pages
+            progress_bar.progress(1.0)
+            status_text.text("페이지 생성 완료!")
+            time.sleep(0.5)
+            status_text.empty()
+            progress_bar.empty()
 
-                # 처리 완료 상태 업데이트
-                st.session_state.processing_done = True
+            # 세션에 페이지 저장
+            st.session_state.pages = pages
+
+            # 처리 완료 상태 업데이트
+            st.session_state.processing_done = True
 
         # 결과 표시 (처리 완료 상태일 때)
         if st.session_state.processing_done:
