@@ -5,6 +5,7 @@ import os
 import json
 import time
 import re
+import pandas as pd
 
 # API 키 기본값은 빈 문자열
 DEFAULT_OPENAI_API_KEY = ""
@@ -355,6 +356,34 @@ def main():
         st.session_state.selected_model = selected_model
 
         st.divider()
+
+        st.header("CSV 업로드")
+        csv_file = st.file_uploader(
+            "CSV 파일을 업로드하세요 (URL만 한 줄씩)", type=["csv"]
+        )
+
+        if csv_file is not None:
+            try:
+                # 컬럼 없이 한 줄씩만 있다고 가정하고, 첫 번째 컬럼만 읽음
+                df = pd.read_csv(csv_file, header=None)
+                urls = df[0].dropna().tolist()
+                urls = list(set(urls))  # 중복 제거
+
+                max_preview = 2  # 미리보기 개수 제한
+
+                if len(urls) > max_preview:
+                    preview_urls = urls[:max_preview]
+                    st.success(f"✅ 총 {len(urls)}개의 URL을 불러왔습니다.")
+                    st.write(preview_urls)
+                    st.info(f"🔍 (그 외 {len(urls) - max_preview}개 URL은 생략됨)")
+                else:
+                    st.success(f"✅ 총 {len(urls)}개의 URL을 불러왔습니다.")
+                    st.write(urls)
+
+            except Exception as e:
+                st.error(f"CSV 파일을 읽는 도중 오류가 발생했습니다: {e}")
+        else:
+            st.info("예시 CSV 형식:\n\n```\nhttps://example.com/a.pdf\n```")
 
         st.header("PDF 업로드")
         uploaded_files = st.file_uploader(
