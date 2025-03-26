@@ -392,7 +392,7 @@ def main():
             accept_multiple_files=True,  # 여러 파일 업로드 허용
         )
 
-        if uploaded_files is not None:
+        if uploaded_files:
             st.success("PDF 업로드 완료!")
             st.image("https://cdn-icons-png.flaticon.com/512/337/337946.png", width=100)
 
