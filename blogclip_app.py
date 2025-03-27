@@ -6,6 +6,18 @@ import json
 import time
 import re
 import pandas as pd
+import tempfile
+import uuid
+
+## 사용자 별로 user_id 부여
+if "user_id" not in st.session_state:
+    st.session_state["user_id"] = str(uuid.uuid4())
+
+
+## 사용자 별로 임시 디렉토리 생성
+user_id = st.session_state["user_id"]
+user_temp_dir = os.path.join(tempfile.gettempdir(), f"streamlit_{user_id}")
+os.makedirs(user_temp_dir, exist_ok=True)
 
 # API 키 기본값은 빈 문자열
 DEFAULT_OPENAI_API_KEY = ""
