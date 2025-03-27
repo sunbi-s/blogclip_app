@@ -9,6 +9,7 @@ import pandas as pd
 import tempfile
 import uuid
 import requests
+import shutil  # 폴더 삭제에 필요
 
 
 # API 키 기본값은 빈 문자열
@@ -50,7 +51,7 @@ def save_uploaded_file(uploaded_file, save_dir):
 
 
 def extract_all_pdfs_from_folder(folder_path):
-    """폴더 내 모든 PDF 파일 텍스트 추출"""
+    """폴더 내 모든 PDF 파일 텍스트 추출 후 폴더 삭제"""
     text = ""
     for file in sorted(os.listdir(folder_path)):
         if file.lower().endswith(".pdf"):
@@ -62,27 +63,14 @@ def extract_all_pdfs_from_folder(folder_path):
                 text += "\n" + content
             except Exception as e:
                 st.warning(f"⚠️ PDF 처리 실패: {file} | 오류: {e}")
+
+    #  추출 끝난 후 폴더 통째로 삭제
+    try:
+        shutil.rmtree(folder_path)
+        st.info(f"🧹 임시 폴더 삭제 완료: `{folder_path}`")  # 디버깅용
+    except Exception as e:
+        st.warning(f"❗ 임시 폴더 삭제 실패: {e}")
     return text
-
-
-# def extract_text_from_pdf(uploaded_files):
-#     """업로드된 PDF에서 텍스트 추출"""
-#     try:
-#         # 임시 파일로 저장
-#         with open("temp.pdf", "wb") as f:
-#             f.write(uploaded_files.getbuffer())
-
-#         # PyPDFLoader로 텍스트 추출
-#         loader = PyPDFLoader("temp.pdf")
-#         pages = loader.load()
-#         text = "\n".join([page.page_content for page in pages])
-
-#         # 임시 파일 삭제
-#         os.remove("temp.pdf")
-#         return text
-#     except Exception as e:
-#         st.error(f"PDF 읽기 오류: {e}")
-#         return ""
 
 
 # csv 파일에서 URL을 추출하고 미리보기 출력
@@ -527,7 +515,8 @@ def main():
                 # 3. 전체 텍스트 추출
                 text = extract_all_pdfs_from_folder(user_temp_dir)
 
-            print(text)
+            print(text)  # 디버깅용
+
             # 선택된 모델로 스크립트 생성
             selected_model = st.session_state.selected_model
             total_script_length = script_length * num_pages
