@@ -8,6 +8,13 @@ import re
 import pandas as pd
 import tempfile
 import uuid
+import requests
+
+
+# API 키 기본값은 빈 문자열
+DEFAULT_OPENAI_API_KEY = ""
+
+st.set_page_config(page_title="BlogClip", page_icon="🎬", layout="wide")
 
 ## 사용자 별로 user_id 부여
 if "user_id" not in st.session_state:
@@ -18,30 +25,88 @@ user_id = st.session_state["user_id"]
 user_temp_dir = os.path.join(tempfile.gettempdir(), f"streamlit_{user_id}")
 os.makedirs(user_temp_dir, exist_ok=True)
 
-# API 키 기본값은 빈 문자열
-DEFAULT_OPENAI_API_KEY = ""
 
-st.set_page_config(page_title="BlogClip", page_icon="🎬", layout="wide")
-
-
-def extract_text_from_pdf(uploaded_files):
-    """업로드된 PDF에서 텍스트 추출"""
+# url을 받아 임시폴더에 pdf를 다운로드하는 함수
+def download_pdf_from_url(url, save_dir):
     try:
-        # 임시 파일로 저장
-        with open("temp.pdf", "wb") as f:
-            f.write(uploaded_files.getbuffer())
-
-        # PyPDFLoader로 텍스트 추출
-        loader = PyPDFLoader("temp.pdf")
-        pages = loader.load()
-        text = "\n".join([page.page_content for page in pages])
-
-        # 임시 파일 삭제
-        os.remove("temp.pdf")
-        return text
+        response = requests.get(url)
+        response.raise_for_status()
+        filename = os.path.basename(url.split("?")[0])  # 쿼리스트링 제거
+        save_path = os.path.join(save_dir, filename)
+        with open(save_path, "wb") as f:
+            f.write(response.content)
+        return save_path
     except Exception as e:
-        st.error(f"PDF 읽기 오류: {e}")
-        return ""
+        st.warning(f"❗ URL 다운로드 실패: {url} | 오류: {e}")
+        return None
+
+
+def save_uploaded_file(uploaded_file, save_dir):
+    """업로드된 파일을 임시 폴더에 저장하고 경로 반환"""
+    file_path = os.path.join(save_dir, uploaded_file.name)
+    with open(file_path, "wb") as f:
+        f.write(uploaded_file.getbuffer())
+    return file_path
+
+
+def extract_all_pdfs_from_folder(folder_path):
+    """폴더 내 모든 PDF 파일 텍스트 추출"""
+    text = ""
+    for file in sorted(os.listdir(folder_path)):
+        if file.lower().endswith(".pdf"):
+            file_path = os.path.join(folder_path, file)
+            try:
+                loader = PyPDFLoader(file_path)
+                pages = loader.load()
+                content = "\n".join([p.page_content for p in pages])
+                text += "\n" + content
+            except Exception as e:
+                st.warning(f"⚠️ PDF 처리 실패: {file} | 오류: {e}")
+    return text
+
+
+# def extract_text_from_pdf(uploaded_files):
+#     """업로드된 PDF에서 텍스트 추출"""
+#     try:
+#         # 임시 파일로 저장
+#         with open("temp.pdf", "wb") as f:
+#             f.write(uploaded_files.getbuffer())
+
+#         # PyPDFLoader로 텍스트 추출
+#         loader = PyPDFLoader("temp.pdf")
+#         pages = loader.load()
+#         text = "\n".join([page.page_content for page in pages])
+
+#         # 임시 파일 삭제
+#         os.remove("temp.pdf")
+#         return text
+#     except Exception as e:
+#         st.error(f"PDF 읽기 오류: {e}")
+#         return ""
+
+
+# csv 파일에서 URL을 추출하고 미리보기 출력
+def handle_csv_and_preview_urls(csv_file, max_preview=2):
+    """CSV 파일에서 URL을 추출하고 미리보기 출력"""
+    try:
+        df = pd.read_csv(csv_file, header=None)
+        urls = df[0].dropna().tolist()
+        urls = list(set(urls))  # 중복 제거
+
+        if len(urls) > max_preview:
+            preview_urls = urls[:max_preview]
+            st.success(f"✅ 총 {len(urls)}개의 URL을 불러왔습니다.")
+            st.write(preview_urls)
+            st.info(f"🔍 (그 외 {len(urls) - max_preview}개 URL은 생략됨)")
+        else:
+            st.success(f"✅ 총 {len(urls)}개의 URL을 불러왔습니다.")
+            st.write(urls)
+
+        return urls  # URL 리스트 반환
+
+    except Exception as e:
+        st.error(f"CSV 파일을 읽는 도중 오류가 발생했습니다: {e}")
+        return []  # 실패 시 빈 리스트 반환
 
 
 def generate_video_script(
@@ -374,29 +439,11 @@ def main():
         )
 
         if csv_file is not None:
-            try:
-                # 컬럼 없이 한 줄씩만 있다고 가정하고, 첫 번째 컬럼만 읽음
-                df = pd.read_csv(csv_file, header=None)
-                urls = df[0].dropna().tolist()
-                urls = list(set(urls))  # 중복 제거
-
-                max_preview = 2  # 미리보기 개수 제한
-
-                if len(urls) > max_preview:
-                    preview_urls = urls[:max_preview]
-                    st.success(f"✅ 총 {len(urls)}개의 URL을 불러왔습니다.")
-                    st.write(preview_urls)
-                    st.info(f"🔍 (그 외 {len(urls) - max_preview}개 URL은 생략됨)")
-                else:
-                    st.success(f"✅ 총 {len(urls)}개의 URL을 불러왔습니다.")
-                    st.write(urls)
-
-            except Exception as e:
-                st.error(f"CSV 파일을 읽는 도중 오류가 발생했습니다: {e}")
+            urls = handle_csv_and_preview_urls(csv_file)
+            st.session_state["csv_urls"] = urls  # 다운로드는 메인세션에서
         else:
             st.info("예시 CSV 형식:\n\n```\nhttps://example.com/a.pdf\n```")
-        
-        
+
         st.header("PDF 업로드")
         uploaded_files = st.file_uploader(
             "PDF 파일을 업로드하세요",
@@ -458,24 +505,27 @@ def main():
             )
 
     # 메인 섹션
-    if uploaded_files or csv_file is not None and (
+    if (uploaded_files or csv_file is not None) and (
         process_button or st.session_state.processing_done
     ):
         # 처리가 완료되지 않았거나 새로운 처리 요청이 있을 경우에만 실행
         if not st.session_state.processing_done or process_button:
-
             # 진행 상황 표시 컨테이너
             progress_container = st.container()
 
-            text = ""  # 전체 텍스트를 저장할 변수
-            # 업로드된 파일 순서대로 text 합쳐지게
-            for uploaded_file in reversed(uploaded_files):
-                with progress_container:
-                    sub_text = extract_text_from_pdf(uploaded_file)
-                    text += "\n" + sub_text  # 텍스트를 누적해서 이어붙이기
-                    if not sub_text:
-                        st.error("PDF에서 텍스트를 추출할 수 없습니다.")
-                        return
+            with progress_container:
+
+                # 1. 업로드된 PDF 저장
+                for uploaded_file in uploaded_files:
+                    save_uploaded_file(uploaded_file, user_temp_dir)
+
+                # 2. CSV에서 추출한 URL로 PDF 다운로드
+                urls = st.session_state.get("csv_urls", [])
+                for url in urls:
+                    download_pdf_from_url(url, user_temp_dir)
+
+                # 3. 전체 텍스트 추출
+                text = extract_all_pdfs_from_folder(user_temp_dir)
 
             print(text)
             # 선택된 모델로 스크립트 생성
