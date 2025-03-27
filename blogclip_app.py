@@ -13,7 +13,6 @@ import uuid
 if "user_id" not in st.session_state:
     st.session_state["user_id"] = str(uuid.uuid4())
 
-
 ## 사용자 별로 임시 디렉토리 생성
 user_id = st.session_state["user_id"]
 user_temp_dir = os.path.join(tempfile.gettempdir(), f"streamlit_{user_id}")
@@ -396,7 +395,8 @@ def main():
                 st.error(f"CSV 파일을 읽는 도중 오류가 발생했습니다: {e}")
         else:
             st.info("예시 CSV 형식:\n\n```\nhttps://example.com/a.pdf\n```")
-
+        
+        
         st.header("PDF 업로드")
         uploaded_files = st.file_uploader(
             "PDF 파일을 업로드하세요",
@@ -458,7 +458,7 @@ def main():
             )
 
     # 메인 섹션
-    if uploaded_files is not None and (
+    if uploaded_files or csv_file is not None and (
         process_button or st.session_state.processing_done
     ):
         # 처리가 완료되지 않았거나 새로운 처리 요청이 있을 경우에만 실행
